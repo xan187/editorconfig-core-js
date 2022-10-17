@@ -1,35 +1,36 @@
 {
   "name": "editorconfig",
-  "version": "0.15.3",
+  "version": "1.0.0",
   "description": "EditorConfig File Locator and Interpreter for Node.js",
   "keywords": [
     "editorconfig",
     "core"
   ],
-  "main": "src/index.js",
+  "main": "./lib/index.js",
   "contributors": [
     "Hong Xu (topbug.net)",
     "Jed Mao (https://github.com/jedmao/)",
-    "Trey Hunner (http://treyhunner.com)"
+    "Trey Hunner (http://treyhunner.com)",
+    "Joe Hildebrand (https://github.com/hildjj/)"
   ],
   "directories": {
     "bin": "./bin",
     "lib": "./lib"
   },
   "scripts": {
-    "clean": "rimraf dist",
+    "clean": "rimraf lib *.cmake Makefile",
     "prebuild": "npm run clean",
-    "build": "tsc",
-    "pretest": "npm run lint && npm run build && npm run copy && cmake .",
-    "test": "ctest .",
-    "pretest:ci": "npm run pretest",
-    "test:ci": "ctest -VV --output-on-failure .",
-    "lint": "npm run eclint && npm run tslint",
-    "eclint": "eclint check --indent_size ignore \"src/**\"",
-    "tslint": "tslint --project tsconfig.json --exclude package.json",
-    "copy": "cpy .npmignore LICENSE README.md CHANGELOG.md dist && cpy bin/* dist/bin && cpy src/lib/fnmatch*.* dist/src/lib",
-    "prepub": "npm run lint && npm run build && npm run copy",
-    "pub": "npm publish ./dist"
+    "build": "cmake . && tsc",
+    "pretest": "npm run build && npm run lint",
+    "test": "npm run test:all",
+    "test:all": "mocha && ctest . --preset Test",
+    "precoverage": "npm run build -- --inlineSourceMap",
+    "coverage": "c8 npm run test:all",
+    "postcoverage": "npm run build",
+    "ci": "npm run coverage -- -- -VV --output-on-failure",
+    "lint": "eslint . --ext ts",
+    "prepub": "npm run lint && npm run build",
+    "pub": "npm publish"
   },
   "repository": {
     "type": "git",
@@ -39,21 +40,27 @@
   "author": "EditorConfig Team",
   "license": "MIT",
   "dependencies": {
-    "commander": "^2.19.0",
-    "lru-cache": "^4.1.5",
-    "semver": "^5.6.0",
-    "sigmund": "^1.0.1"
+    "@one-ini/wasm": "0.1.0",
+    "commander": "^9.4.1",
+    "minimatch": "5.1.0",
+    "semver": "^7.3.8"
   },
   "devDependencies": {
-    "@types/mocha": "^5.2.6",
-    "@types/node": "^10.12.29",
-    "@types/semver": "^5.5.0",
-    "cpy-cli": "^2.0.0",
-    "eclint": "^2.8.1",
-    "mocha": "^5.2.0",
-    "rimraf": "^2.6.3",
+    "@types/minimatch": "5.1.2",
+    "@types/mocha": "^10.0.0",
+    "@types/node": "^18.11.0",
+    "@types/semver": "^7.3.12",
+    "@typescript-eslint/eslint-plugin": "5.40.1",
+    "@typescript-eslint/parser": "5.40.1",
+    "c8": "7.12.0",
+    "eslint": "8.25.0",
+    "eslint-plugin-jsdoc": "39.3.12",
+    "mocha": "^10.1.0",
+    "rimraf": "^3.0.2",
     "should": "^13.2.3",
-    "tslint": "^5.13.1",
-    "typescript": "^3.3.3333"
+    "typescript": "^4.8.4"
+  },
+  "engines": {
+    "node": ">=14"
   }
 }

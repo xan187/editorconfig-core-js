@@ -1,47 +1,99 @@
-// tslint:disable:no-console
-import program from 'commander'
+import { Command, type OutputConfiguration } from 'commander'
 
 import * as editorconfig from './'
 
 import pkg from '../package.json'
 
-export default function cli(args: string[]) {
-  program.version('EditorConfig Node.js Core Version ' + pkg.version)
+/**
+ * Default output routine, goes to stdout.
+ *
+ * @param s String to output
+ */
+function writeStdOut(s: string): void {
+  process.stdout.write(s)
+}
 
-  program
-    .usage([
-        '[OPTIONS] FILEPATH1 [FILEPATH2 FILEPATH3 ...]',
-        program._version,
-        'FILEPATH can be a hyphen (-) if you want path(s) to be read from stdin.',
-      ].join('\n\n  '))
-    .option('-f <path>',     'Specify conf filename other than \'.editorconfig\'')
-    .option('-b <version>',  'Specify version (used by devs to test compatibility)')
-    .option('-v, --version', 'Display version information')
-    .parse(args)
+/**
+ * Command line interface for editorconfig.  Pulled out into a separate module
+ * to make it easier to test.
+ *
+ * @param args Usually process.argv.  Note that the first two parameters are
+ * usually 'node' and 'editorconfig'
+ * @param testing If testing, you may pass in a Commander OutputConfiguration
+ * so that you can capture stdout and stderror.  If `testing` is provided,
+ * this routine will throw an error instead of calling `process.exit`.
+ * @returns An array of combined properties, one for each file argument.
+ */
+export default async function cli(
+  args: string[],
+  testing?: OutputConfiguration
+): Promise<editorconfig.Props[]> {
+  const program = new Command()
 
-  // Throw away the native -V flag in lieu of the one we've manually specified
-  // to adhere to testing requirements
-  program.options.shift()
+  let writeOut = writeStdOut
 
-  const files = program.args
-
-  if (!files.length) {
-    program.help()
+  if (testing) {
+    if (testing.writeOut) {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      writeOut = testing.writeOut
+    }
+    program.configureOutput(testing)
+    program.exitOverride()
   }
 
-  files
-    .map((filePath) => editorconfig.parse(filePath, {
-      config: program.F,
-      version: program.B,
-    }))
-    .forEach((parsing, i, { length }) => {
-      parsing.then((parsed) => {
-        if (length > 1) {
-          console.log(`[${files[i]}]`)
+  program.version(
+    'EditorConfig Node.js Core Version ' + pkg.version,
+    '-v, --version',
+    'Display version information'
+  )
+    .showHelpAfterError()
+    .argument(
+      '<FILEPATH...>',
+      'Files to find configuration for.  Can be a hyphen (-) if you want path(s) to be read from stdin.'
+    )
+    .option('-f <path>',       'Specify conf filename other than \'.editorconfig\'')
+    .option('-b <version>',    'Specify version (used by devs to test compatibility)')
+    .option('--files',         'Output file names that contributed to the configuration, rather than the configuation itself')
+    .parse(args)
+
+  const files = program.args
+  const opts = program.opts()
+  const cache = new Map<string, editorconfig.ProcessedFileConfig>()
+  const visited = opts.files ?
+    files.map<editorconfig.Visited[]>(() => []) :
+    undefined
+
+  // Process sequentially so caching works
+  async function processAll(): Promise<editorconfig.Props[]> {
+    const p = []
+    let i = 0
+    for (const filePath of files) {
+      p.push(await editorconfig.parse(filePath, {
+        config: opts.f as string,
+        version: opts.b as string,
+        files: visited ? visited[i++] : undefined,
+        cache,
+      }))
+    }
+    return p
+  }
+
+  return await processAll().then((parsed) => {
+    const header = parsed.length > 1
+    parsed.forEach((props, i) => {
+      if (header) {
+        writeOut(`[${files[i]}]\n`)
+      }
+      if (visited) {
+        for (const v of visited[i]) {
+          writeOut(`${v.fileName} [${v.glob}]\n`)
         }
-        Object.keys(parsed).forEach((key) => {
-          console.log(`${key}=${parsed[key]}`)
-        })
-      })
+      } else {
+        for (const [key, value] of Object.entries(props)) {
+          writeOut(`${key}=${String(value)}\n`)
+        }
+      }
     })
+    return parsed
+  })
 }
